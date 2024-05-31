@@ -1,3 +1,7 @@
+/*
+* This is the example file that appears in Odersky's talk about direct style
+*/
+
 import scala.util.boundary, boundary.break, boundary.Label
 import scala.util.boundary.Break
 import undo._
