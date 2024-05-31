@@ -2,6 +2,7 @@ import undo._
 import scala.concurrent.*
 import scala.compiletime.summonInline
 import scala.concurrent.duration.*
+import scala.util.{Success, Failure}
 
 object undoEventually:
 
@@ -25,3 +26,19 @@ object undoEventually:
             case e: Exception => e
           })
         case e:Exception => compensator(e)
+
+  /*
+   * It should be possible to generalize this for a MonadError[Throwable], maybe with a rollbackOnM
+   */
+  inline def eventuallyRollbackOn[T](inline predicate: PartialFunction[T|Exception, Unit])(inline body: UndoContext ?=> Future[T])(using ExecutionContext): Future[T] =
+    Future.successful(new UndoContext).flatMap(undoContext => body(using undoContext).transformWith {
+      case Success(t) => 
+        if predicate.isDefinedAt(t) then
+          undoContext.rollback
+        Future.successful(t)
+      case Failure(e: Exception) => 
+        if predicate.isDefinedAt(e) then
+          undoContext.rollback
+        Future.failed(e)
+      case Failure(t) => Future.failed(t)
+    })

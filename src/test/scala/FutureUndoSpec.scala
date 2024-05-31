@@ -162,4 +162,40 @@ class FutureUndoSpec extends AnyFlatSpec with should.Matchers {
     completed.await(1, TimeUnit.SECONDS)
     effects shouldBe List("+effect 2", "+effect", "-effect 2", "-effect")
   }
+
+  "eventuallyRollbackOn" should "accept a Future[T] body and make the test inside the future" in {
+    val effects = ListBuffer[String]()
+    val l1 = new CountDownLatch(1)
+    val l2 = new CountDownLatch(1)
+    val completed = new CountDownLatch(1)
+    def eventualResult: Future[String] = {
+      eventuallyRollbackOn[String]{case e: Exception =>} {
+        for {
+          f1 <- Future[String] {
+            l1.await(1, TimeUnit.SECONDS)
+            effects.append("+effect")
+            "1"
+          } compensateEventually {
+            case _ => 
+              effects.append("-effect")
+              completed.countDown
+          }
+          f2 <- Future[String] {
+            l2.await(1, TimeUnit.SECONDS)
+            effects.append("+effect 2") compensate {
+              case _ => 
+                effects.append("-effect 2")
+            }
+            throw new IllegalStateException("forced error inside the future")        
+          }
+        } yield (f1 + f2)    
+      }
+    }
+    val futureResult = eventualResult
+    effects.toList shouldBe empty
+    l1.countDown
+    l2.countDown
+    completed.await(1, TimeUnit.SECONDS)
+    effects.toList shouldBe List("+effect", "+effect 2", "-effect 2", "-effect")
+  }
 }
