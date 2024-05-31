@@ -5,8 +5,16 @@ import scala.jdk.CollectionConverters.*
 import scala.compiletime.{summonInline, summonFrom}
 import quoted.Type
 
+/*
+* Compensators can accept either a succesful result or a failure, this way they can 
+* decide to compensate even if the effect they are compensating did not complete fully.
+* Normally we are only going to want to compensate fully completed effects. 
+*/
 type Compensator[T] = PartialFunction[T | Exception, Unit] 
 
+/*
+* This class holds the compensators of a given transaction
+*/
 class UndoContext:
   val compensators: ConcurrentLinkedDeque[() => Unit] = new ConcurrentLinkedDeque()
   def rollback: Unit = {
@@ -40,12 +48,16 @@ object undo:
       case t: T => t
     }
 
+  //Particularization of rollbackOn
   inline def rollbackOnError[T](inline body: UndoContext ?=> T): T =
     undo.rollbackOn[T]({
       case e: Exception => 
     }):
       body
 
+  //Register a compensator for a given code block. It wraps the block in a try/catch block
+  //and registers a compensator within the UndoContext if the compensator is defined for the
+  //result that was returned
   extension [T](inline body: UndoContext ?=>T)
     infix inline def compensate(compensator: Compensator[T]): T =
       val uc: UndoContext = summonInline[UndoContext]
